@@ -44,6 +44,10 @@ if (empty($api_key)) {
     <?php
     return;
 }
+
+// Add export nonce and URL
+$export_nonce = wp_create_nonce('contentbridge_export_analytics');
+$export_url = admin_url('admin-post.php?action=contentbridge_export_analytics&nonce=' . $export_nonce);
 ?>
 
 <div class="wrap contentbridge-dashboard">
@@ -69,7 +73,8 @@ if (empty($api_key)) {
         </div>
 
         <div class="contentbridge-dashboard__actions">
-            <button class="button" id="contentbridge-export">
+            <button type="button" id="contentbridge-export" class="button"
+                data-export-url="<?php echo esc_url($export_url); ?>">
                 <span class="dashicons dashicons-download"></span>
                 <?php esc_html_e('Export Data', 'contentbridge'); ?>
             </button>
@@ -334,28 +339,22 @@ jQuery(document).ready(function($) {
         }
     });
 
-    // Handle update button
+    // Update button functionality (AJAX)
     $('#contentbridge-update').on('click', function() {
-        const period = $('#contentbridge-period').val();
-        let startDate, endDate;
-
-        if (period === 'custom') {
-            startDate = $('#contentbridge-start-date').val();
-            endDate = $('#contentbridge-end-date').val();
-        } else {
-            endDate = new Date().toISOString().split('T')[0];
-            startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        let start = $('#contentbridge-start-date').val();
+        let end = $('#contentbridge-end-date').val();
+        if (!start || !end) {
+            alert('<?php esc_html_e('Please select a valid date range.', 'contentbridge'); ?>');
+            return;
         }
-
-        // Update analytics data
         $.ajax({
             url: ajaxurl,
             type: 'POST',
             data: {
                 action: 'contentbridge_get_analytics',
                 nonce: '<?php echo wp_create_nonce('contentbridge_analytics'); ?>',
-                start_date: startDate,
-                end_date: endDate
+                start_date: start,
+                end_date: end
             },
             success: function(response) {
                 if (response.success) {
@@ -370,58 +369,56 @@ jQuery(document).ready(function($) {
         });
     });
 
-    // Handle export button
+    // Export functionality
     $('#contentbridge-export').on('click', function() {
-        const period = $('#contentbridge-period').val();
-        let startDate, endDate;
-
-        if (period === 'custom') {
-            startDate = $('#contentbridge-start-date').val();
-            endDate = $('#contentbridge-end-date').val();
-        } else {
-            endDate = new Date().toISOString().split('T')[0];
-            startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        // Get selected date range
+        let start = $('#contentbridge-start-date').val();
+        let end = $('#contentbridge-end-date').val();
+        let url = $(this).data('export-url');
+        if (start && end) {
+            url += '&start_date=' + encodeURIComponent(start) + '&end_date=' + encodeURIComponent(end);
         }
-
-        window.location.href = ajaxurl + '?' + $.param({
-            action: 'contentbridge_export_analytics',
-            nonce: '<?php echo wp_create_nonce('contentbridge_export'); ?>',
-            start_date: startDate,
-            end_date: endDate
-        });
+        window.location.href = url;
     });
 
     function updateDashboard(data) {
         // Update stats
-        $('#total-revenue').text('$' + data.revenue.total_revenue.toFixed(2));
-        $('#total-requests').text(data.revenue.total_requests.toLocaleString());
-        $('#avg-revenue').text('$' + (data.revenue.total_requests ? (data.revenue.total_revenue / data.revenue.total_requests).toFixed(3) : '0.000'));
+        $('.stat-value').eq(0).text('$' + (data.revenue.total_revenue ? Number(data.revenue.total_revenue).toFixed(2) : '0.00'));
+        $('.stat-value').eq(1).text(data.revenue.total_requests ? Number(data.revenue.total_requests).toLocaleString() : '0');
+        $('.stat-value').eq(2).text(data.revenue.unique_tokens ? Number(data.revenue.unique_tokens).toLocaleString() : '0');
+        let avg = (data.revenue.total_requests > 0) ? (data.revenue.total_revenue / data.revenue.total_requests) : 0;
+        $('.stat-value').eq(3).text('$' + Number(avg).toFixed(3));
 
         // Update top content table
         let contentHtml = '';
-        data.content.forEach(function(item) {
-            contentHtml += `
-                <tr>
-                    <td><a href="${item.permalink}" target="_blank">${item.title}</a></td>
-                    <td>${item.requests.toLocaleString()}</td>
-                    <td>$${item.revenue.toFixed(2)}</td>
-                </tr>
-            `;
-        });
-        $('#top-content').html(contentHtml);
+        if (Array.isArray(data.content)) {
+            data.content.slice(0, 10).forEach(function(item) {
+                let requests = item.requests ? Number(item.requests) : 0;
+                let revenue = item.revenue ? Number(item.revenue) : 0;
+                let avg_price = requests > 0 ? revenue / requests : 0;
+                contentHtml += `<tr>
+                    <td><strong>${item.title || 'Unknown'}</strong><br><small>${item.url || ''}</small></td>
+                    <td>${requests.toLocaleString()}</td>
+                    <td>$${revenue.toFixed(2)}</td>
+                    <td>$${avg_price.toFixed(3)}</td>
+                </tr>`;
+            });
+        }
+        $('.contentbridge-table-wrapper tbody').first().html(contentHtml);
 
         // Update company usage table
         let companyHtml = '';
-        data.companies.forEach(function(company) {
-            companyHtml += `
-                <tr>
-                    <td>${company.name}</td>
-                    <td>${company.requests.toLocaleString()}</td>
-                    <td>$${company.revenue.toFixed(2)}</td>
-                </tr>
-            `;
-        });
-        $('#company-usage').html(companyHtml);
+        if (Array.isArray(data.companies)) {
+            data.companies.slice(0, 10).forEach(function(company) {
+                companyHtml += `<tr>
+                    <td><strong>${company.name || 'Unknown Company'}</strong></td>
+                    <td>${company.requests ? Number(company.requests).toLocaleString() : 0}</td>
+                    <td>$${company.revenue ? Number(company.revenue).toFixed(2) : '0.00'}</td>
+                    <td>${company.last_access ? new Date(company.last_access).toLocaleString() : '<?php esc_html_e('Never', 'contentbridge'); ?>'}</td>
+                </tr>`;
+            });
+        }
+        $('.contentbridge-table-wrapper tbody').last().html(companyHtml);
 
         // Reinitialize charts
         initCharts();

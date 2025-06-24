@@ -16,6 +16,7 @@ class Admin {
         add_action('save_post', array($this, 'save_meta_box_data'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
         add_action('wp_dashboard_setup', array($this, 'add_dashboard_widget'));
+        add_action('admin_post_contentbridge_export_analytics', array($this, 'handle_export_analytics'));
     }
 
     /**
@@ -372,5 +373,62 @@ class Admin {
             </form>
         </div>
         <?php
+    }
+
+    /**
+     * Handle export analytics as CSV
+     */
+    public function handle_export_analytics() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Unauthorized', 'contentbridge'));
+        }
+        $nonce = isset($_GET['nonce']) ? sanitize_text_field($_GET['nonce']) : '';
+        if (!wp_verify_nonce($nonce, 'contentbridge_export_analytics')) {
+            wp_die(__('Invalid nonce', 'contentbridge'));
+        }
+        $start_date = isset($_GET['start_date']) ? sanitize_text_field($_GET['start_date']) : date('Y-m-d', strtotime('-30 days'));
+        $end_date = isset($_GET['end_date']) ? sanitize_text_field($_GET['end_date']) : date('Y-m-d');
+        $analytics = new \ContentBridge\Analytics();
+        $data = $analytics->get_analytics($start_date, $end_date);
+        if (is_wp_error($data)) {
+            wp_die(__('Error fetching analytics data: ', 'contentbridge') . $data->get_error_message());
+        }
+        // Output CSV headers
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=contentbridge-analytics-' . $start_date . '-to-' . $end_date . '.csv');
+        $output = fopen('php://output', 'w');
+        // Revenue summary
+        fputcsv($output, array('Metric', 'Value'));
+        foreach ($data['revenue'] as $key => $value) {
+            fputcsv($output, array($key, $value));
+        }
+        fputcsv($output, array());
+        // Top content
+        if (!empty($data['content']) && is_array($data['content'])) {
+            fputcsv($output, array('Title', 'URL', 'Requests', 'Revenue'));
+            foreach ($data['content'] as $item) {
+                fputcsv($output, array(
+                    $item['title'] ?? '',
+                    $item['url'] ?? '',
+                    $item['requests'] ?? 0,
+                    $item['revenue'] ?? 0
+                ));
+            }
+            fputcsv($output, array());
+        }
+        // AI Companies
+        if (!empty($data['companies']) && is_array($data['companies'])) {
+            fputcsv($output, array('Company', 'Requests', 'Revenue', 'Last Access'));
+            foreach ($data['companies'] as $company) {
+                fputcsv($output, array(
+                    $company['name'] ?? '',
+                    $company['requests'] ?? 0,
+                    $company['revenue'] ?? 0,
+                    $company['last_access'] ?? ''
+                ));
+            }
+        }
+        fclose($output);
+        exit;
     }
 } 
