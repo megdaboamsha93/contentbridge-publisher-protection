@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    bootstrap="tests/bootstrap.php"
+    backupGlobals="false"
+    colors="true"
+    convertErrorsToExceptions="true"
+    convertNoticesToExceptions="true"
+    convertWarningsToExceptions="true"
+    verbose="true"
+    >
+    <testsuites>
+        <testsuite name="ContentBridge Publisher Protection Test Suite">
+            <directory suffix="Test.php">./tests</directory>
+        </testsuite>
+    </testsuites>
+    <coverage>
+        <include>
+            <directory suffix=".php">./includes</directory>
+            <directory suffix=".php">./admin</directory>
+            <file>contentbridge.php</file>
+        </include>
+    </coverage>
+    <php>
+        <env name="WP_TESTS_DIR" value="./tmp/wordpress-tests-lib"/>
+        <env name="WP_CORE_DIR" value="./tmp/wordpress/"/>
+        <env name="TEST_API_KEY" value="test_key_123"/>
+    </php>
+</phpunit> 
