@@ -64,6 +64,41 @@ function contentbridge_init() {
     
     $content_protector = new ContentBridge\Content_Protector();
     $content_protector->init();
+
+    /**
+     * ContentBridge Security Headers
+     * Adds essential security headers to reach 9/10 security rating
+     */
+    class ContentBridge_Security_Headers {
+        public function __construct() {
+            add_action('init', array($this, 'add_security_headers'));
+            add_action('admin_init', array($this, 'add_admin_security_headers'));
+        }
+        /**
+         * Add security headers to all responses
+         */
+        public function add_security_headers() {
+            if (!headers_sent()) {
+                header('X-Content-Type-Options: nosniff');
+                header('X-Frame-Options: SAMEORIGIN');
+                header('X-XSS-Protection: 1; mode=block');
+                header('Referrer-Policy: strict-origin-when-cross-origin');
+            }
+        }
+        /**
+         * Add CSP headers for admin pages
+         */
+        public function add_admin_security_headers() {
+            if (is_admin() && !headers_sent()) {
+                // Relaxed CSP for WordPress admin compatibility
+                header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';");
+            }
+        }
+    }
+    // Initialize security headers
+    if (class_exists('ContentBridge_Security_Headers')) {
+        new ContentBridge_Security_Headers();
+    }
 }
 add_action('plugins_loaded', 'contentbridge_init');
 

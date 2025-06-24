@@ -17,6 +17,12 @@ class Token_Validator {
     private $cache_duration;
 
     /**
+     * Rate limit settings
+     */
+    private $rate_limit = 100; // requests per hour
+    private $rate_limit_window = HOUR_IN_SECONDS;
+
+    /**
      * Constructor
      *
      * @param API_Client|null $api_client Optional API client for testing
@@ -34,18 +40,24 @@ class Token_Validator {
      * @return array Validation result with 'valid', 'message', and 'data' keys
      */
     public function validate_token($token) {
+        // Rate limiting
+        if (!$this->check_rate_limit($token)) {
+            return array(
+                'valid' => false,
+                'message' => __('Rate limit exceeded', 'contentbridge'),
+                'data' => array(),
+                'rate_limited' => true
+            );
+        }
         // Check cache first
         $cached_result = $this->get_cached_validation($token);
         if (false !== $cached_result) {
             return $cached_result;
         }
-
         // Validate with API
         $validation_result = $this->validate_with_api($token);
-
         // Cache the result
         $this->cache_validation_result($token, $validation_result);
-
         return $validation_result;
     }
 
@@ -182,5 +194,20 @@ class Token_Validator {
             WHERE a.option_name LIKE '_transient_cb_token_%' 
             AND b.option_value < " . time()
         );
+    }
+
+    /**
+     * Check rate limit for token
+     */
+    private function check_rate_limit($token) {
+        $token_hash = hash('sha256', $token);
+        $transient_key = 'cb_rate_limit_' . $token_hash;
+        $current_count = (int) get_transient($transient_key);
+        if ($current_count >= $this->rate_limit) {
+            error_log('ContentBridge: Rate limit exceeded for token: ' . substr($token_hash, 0, 10));
+            return false;
+        }
+        set_transient($transient_key, $current_count + 1, $this->rate_limit_window);
+        return true;
     }
 } 

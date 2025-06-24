@@ -170,16 +170,30 @@ class Content_Protector {
     private function get_access_token() {
         $token = null;
 
-        // Check Authorization header
-        if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-            if (preg_match('/Bearer\s(\S+)/', $_SERVER['HTTP_AUTHORIZATION'], $matches)) {
+        // Method 1: Authorization header (preferred)
+        if (!empty($_SERVER['HTTP_AUTHORIZATION'])) {
+            $auth_header = sanitize_text_field($_SERVER['HTTP_AUTHORIZATION']);
+            if (preg_match('/Bearer\s+([a-zA-Z0-9_-]+)/', $auth_header, $matches)) {
                 $token = $matches[1];
             }
         }
 
-        // Check query parameters
-        if (!$token && isset($_GET['access_token'])) {
-            $token = $_GET['access_token'];
+        // Method 2: Custom header (fallback)
+        if (!$token && !empty($_SERVER['HTTP_X_CONTENTBRIDGE_TOKEN'])) {
+            $token = sanitize_text_field($_SERVER['HTTP_X_CONTENTBRIDGE_TOKEN']);
+        }
+
+        // Method 3: Query parameter (last resort - log this usage)
+        if (!$token && !empty($_GET['access_token'])) {
+            $token = sanitize_text_field($_GET['access_token']);
+            // Log this for security monitoring
+            error_log('ContentBridge: Token passed via query parameter from IP: ' . $this->get_client_ip());
+        }
+
+        // Validate token format (ContentBridge tokens start with 'cb_')
+        if ($token && !preg_match('/^cb_[a-zA-Z0-9]{64}$/', $token)) {
+            error_log('ContentBridge: Invalid token format received');
+            return null;
         }
 
         return $token;

@@ -109,11 +109,12 @@ class Admin {
         }
 
         if (isset($input['protection_level'])) {
-            $sanitized['protection_level'] = sanitize_text_field($input['protection_level']);
+            $allowed_levels = array('standard', 'strict', 'custom');
+            $sanitized['protection_level'] = in_array($input['protection_level'], $allowed_levels) ? $input['protection_level'] : 'standard';
         }
 
         if (isset($input['cache_duration'])) {
-            $sanitized['cache_duration'] = absint($input['cache_duration']);
+            $sanitized['cache_duration'] = max(300, (int) $input['cache_duration']); // Min 5 minutes
         }
 
         return $sanitized;
@@ -267,27 +268,29 @@ class Admin {
      * @param int $post_id Post ID
      */
     public function save_meta_box_data($post_id) {
-        if (!isset($_POST['contentbridge_meta_box_nonce'])) {
+        // Verify nonce
+        if (!isset($_POST['contentbridge_meta_box_nonce']) ||
+            !wp_verify_nonce($_POST['contentbridge_meta_box_nonce'], 'contentbridge_meta_box')) {
             return;
         }
 
-        if (!wp_verify_nonce($_POST['contentbridge_meta_box_nonce'], 'contentbridge_meta_box')) {
-            return;
-        }
-
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
-            return;
-        }
-
+        // Check user capabilities
         if (!current_user_can('edit_post', $post_id)) {
             return;
         }
 
+        // Check if autosave
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return;
+        }
+
+        // Sanitize and save data
         $is_protected = isset($_POST['contentbridge_protected']) ? '1' : '0';
         update_post_meta($post_id, '_contentbridge_protected', $is_protected);
 
         if (isset($_POST['contentbridge_price'])) {
-            $price = (float) $_POST['contentbridge_price'];
+            $price = (float) sanitize_text_field($_POST['contentbridge_price']);
+            $price = max(0, $price); // Ensure non-negative
             update_post_meta($post_id, '_contentbridge_price', $price);
         }
     }

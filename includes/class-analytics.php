@@ -54,27 +54,74 @@ class Analytics {
      */
     public function track_access($data) {
         global $wpdb;
-
-        $table_name = $wpdb->prefix . 'contentbridge_analytics';
-        $wpdb->insert(
-            $table_name,
-            array(
-                'post_id' => $data['post_id'],
-                'token_hash' => md5($data['token']),
-                'access_time' => current_time('mysql'),
-                'token_data' => maybe_serialize($data['token_data']),
-                'user_agent' => $data['user_agent'],
-                'ip_address' => $data['ip_address']
-            ),
+        // Validate required data
+        if (!isset($data['post_id'], $data['token'], $data['token_data'])) {
+            error_log('ContentBridge Analytics: Missing required data for tracking');
+            return false;
+        }
+        // Validate post exists and is published
+        $post = get_post((int) $data['post_id']);
+        if (!$post || $post->post_status !== 'publish') {
+            error_log('ContentBridge Analytics: Invalid post ID: ' . $data['post_id']);
+            return false;
+        }
+        // Prepare data with proper sanitization
+        $insert_data = array(
+            'post_id' => (int) $data['post_id'],
+            'token_hash' => hash('sha256', $data['token']),
+            'access_time' => current_time('mysql'),
+            'token_data' => wp_json_encode($data['token_data']),
+            'user_agent' => $this->sanitize_user_agent($data['user_agent'] ?? ''),
+            'ip_address' => $this->anonymize_ip($data['ip_address'] ?? '')
+        );
+        // Insert with proper error handling
+        $result = $wpdb->insert(
+            $this->table_name,
+            $insert_data,
             array('%d', '%s', '%s', '%s', '%s', '%s')
         );
-
-        // Send to ContentBridge API
-        try {
-            $this->api_client->track_access($data);
-        } catch (\Exception $e) {
-            error_log('ContentBridge API Error: ' . $e->getMessage());
+        if ($result === false) {
+            error_log('ContentBridge Analytics: Database insert failed - ' . $wpdb->last_error);
+            return false;
         }
+        // Fire action for extensibility
+        do_action('contentbridge_access_tracked', $data['post_id'], $data['token_data']);
+        return true;
+    }
+
+    /**
+     * Sanitize user agent string
+     */
+    private function sanitize_user_agent($user_agent) {
+        $user_agent = sanitize_text_field($user_agent);
+        return mb_substr($user_agent, 0, 255, 'UTF-8');
+    }
+
+    private function anonymize_ip($ip) {
+        if (empty($ip)) {
+            return '';
+        }
+        // Validate IP
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            return '';
+        }
+        // Anonymize IPv4
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            $parts = explode('.', $ip);
+            $parts[3] = '0';
+            return implode('.', $parts);
+        }
+        // Anonymize IPv6
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $parts = explode(':', $ip);
+            for ($i = 4; $i < 8; $i++) {
+                if (isset($parts[$i])) {
+                    $parts[$i] = '0';
+                }
+            }
+            return implode(':', $parts);
+        }
+        return '';
     }
 
     /**

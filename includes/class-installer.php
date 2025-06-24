@@ -28,7 +28,7 @@ class Installer {
         $sql = "CREATE TABLE IF NOT EXISTS $table_name (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             post_id bigint(20) NOT NULL,
-            token_hash varchar(32) NOT NULL,
+            token_hash varchar(64) NOT NULL,
             access_time datetime NOT NULL,
             token_data text NOT NULL,
             user_agent text,
@@ -36,7 +36,9 @@ class Installer {
             PRIMARY KEY  (id),
             KEY post_id (post_id),
             KEY token_hash (token_hash),
-            KEY access_time (access_time)
+            KEY access_time (access_time),
+            KEY idx_post_access_time (post_id, access_time),
+            KEY idx_token_time (token_hash, access_time)
         ) $charset_collate;";
 
         // Daily stats table
@@ -55,7 +57,7 @@ class Installer {
         // Token cache table
         $table_name = $wpdb->prefix . 'contentbridge_tokens';
         $sql .= "CREATE TABLE IF NOT EXISTS $table_name (
-            token_hash varchar(32) NOT NULL,
+            token_hash varchar(64) NOT NULL,
             validation_data text NOT NULL,
             expiration datetime NOT NULL,
             PRIMARY KEY  (token_hash),
@@ -64,6 +66,10 @@ class Installer {
 
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
+        // Error handling
+        if ($wpdb->last_error) {
+            error_log('ContentBridge Installer: DB error - ' . $wpdb->last_error);
+        }
     }
 
     /**
