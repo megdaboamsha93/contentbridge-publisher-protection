@@ -48,6 +48,11 @@ if (empty($api_key)) {
 // Add export nonce and URL
 $export_nonce = wp_create_nonce('contentbridge_export_analytics');
 $export_url = admin_url('admin-post.php?action=contentbridge_export_analytics&nonce=' . $export_nonce);
+
+if (is_wp_error($data)) {
+    echo '<div class="notice notice-error"><p>' . esc_html($data->get_error_message()) . '</p></div>';
+    return;
+}
 ?>
 
 <div class="wrap contentbridge-dashboard">

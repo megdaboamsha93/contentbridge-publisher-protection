@@ -6,7 +6,7 @@ namespace ContentBridge;
  * Handles communication with the ContentBridge API
  */
 class API_Client {
-    const VALIDATION_URL = 'https://your-supabase-project.supabase.co/functions/v1/validate-token';
+    const VALIDATION_URL = 'https://wvnejqwzvebccjcjbfye.supabase.co/functions/v1/validate-token';
     const VALIDATION_METHOD = 'POST';
 
     /**
@@ -35,23 +35,16 @@ class API_Client {
      */
     public function validate_token($token) {
         $url = self::VALIDATION_URL;
-        $post_url = $this->get_current_url();
-        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-        $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
-
         $args = [
             'headers' => [
                 'Content-Type' => 'application/json',
             ],
             'body' => json_encode([
                 'token' => $token,
-                'url' => $post_url,
-                'userAgent' => $user_agent,
-                'ipAddress' => $ip_address,
+                'type' => 'publisher',
             ]),
             'timeout' => 10,
         ];
-
         $response = wp_remote_post($url, $args);
         if (is_wp_error($response)) {
             return [
@@ -73,10 +66,7 @@ class API_Client {
         return [
             'valid' => !empty($json['valid']),
             'message' => $json['result'] ?? '',
-            'data' => [
-                'token_prefix' => $json['token_prefix'] ?? '',
-                'result' => $json['result'] ?? '',
-            ]
+            'data' => $json,
         ];
     }
 

@@ -3,12 +3,17 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Get analytics data
+// Get analytics data for the selected month or default to current month
+$month = isset($_GET['month']) ? sanitize_text_field($_GET['month']) : date('Y-m');
+$start_date = $month . '-01';
+$end_date = date('Y-m-t', strtotime($start_date));
+
 $analytics = new ContentBridge\Analytics();
-$current_month = date('Y-m');
-$monthly_stats = $analytics->get_monthly_stats($current_month);
-$top_content = $analytics->get_top_content(10);
-$revenue_data = $analytics->get_revenue_data($current_month);
+$data = $analytics->get_analytics($start_date, $end_date);
+if (is_wp_error($data)) {
+    echo '<div class="notice notice-error"><p>' . esc_html($data->get_error_message()) . '</p></div>';
+    return;
+}
 ?>
 
 <div class="wrap contentbridge-analytics">
@@ -20,7 +25,7 @@ $revenue_data = $analytics->get_revenue_data($current_month);
                 <?php
                 for ($i = 0; $i < 12; $i++) {
                     $date = date('Y-m', strtotime("-$i months"));
-                    $selected = ($date === $current_month) ? 'selected' : '';
+                    $selected = ($date === $month) ? 'selected' : '';
                     echo sprintf(
                         '<option value="%s" %s>%s</option>',
                         esc_attr($date),
@@ -43,25 +48,25 @@ $revenue_data = $analytics->get_revenue_data($current_month);
         <!-- Summary Cards -->
         <div class="analytics-card">
             <h3><?php _e('Total Views', 'contentbridge'); ?></h3>
-            <div class="stat-value"><?php echo number_format($monthly_stats['total_views']); ?></div>
-            <div class="stat-change <?php echo $monthly_stats['views_change'] >= 0 ? 'positive' : 'negative'; ?>">
-                <?php echo sprintf('%+d%%', $monthly_stats['views_change']); ?>
+            <div class="stat-value"><?php echo number_format($data['total_views']); ?></div>
+            <div class="stat-change <?php echo $data['views_change'] >= 0 ? 'positive' : 'negative'; ?>">
+                <?php echo sprintf('%+d%%', $data['views_change']); ?>
             </div>
         </div>
         
         <div class="analytics-card">
             <h3><?php _e('Total Revenue', 'contentbridge'); ?></h3>
-            <div class="stat-value">$<?php echo number_format($monthly_stats['total_revenue'], 2); ?></div>
-            <div class="stat-change <?php echo $monthly_stats['revenue_change'] >= 0 ? 'positive' : 'negative'; ?>">
-                <?php echo sprintf('%+d%%', $monthly_stats['revenue_change']); ?>
+            <div class="stat-value">$<?php echo number_format($data['total_revenue'], 2); ?></div>
+            <div class="stat-change <?php echo $data['revenue_change'] >= 0 ? 'positive' : 'negative'; ?>">
+                <?php echo sprintf('%+d%%', $data['revenue_change']); ?>
             </div>
         </div>
         
         <div class="analytics-card">
             <h3><?php _e('Unique Visitors', 'contentbridge'); ?></h3>
-            <div class="stat-value"><?php echo number_format($monthly_stats['unique_visitors']); ?></div>
-            <div class="stat-change <?php echo $monthly_stats['visitors_change'] >= 0 ? 'positive' : 'negative'; ?>">
-                <?php echo sprintf('%+d%%', $monthly_stats['visitors_change']); ?>
+            <div class="stat-value"><?php echo number_format($data['unique_visitors']); ?></div>
+            <div class="stat-change <?php echo $data['visitors_change'] >= 0 ? 'positive' : 'negative'; ?>">
+                <?php echo sprintf('%+d%%', $data['visitors_change']); ?>
             </div>
         </div>
     </div>
@@ -85,16 +90,16 @@ $revenue_data = $analytics->get_revenue_data($current_month);
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($top_content as $content): ?>
+                <?php foreach ($data['top_content'] as $content): ?>
                     <tr>
                         <td>
-                            <a href="<?php echo esc_url(get_permalink($content->post_id)); ?>">
-                                <?php echo esc_html($content->title); ?>
+                            <a href="<?php echo esc_url(get_permalink($content['post_id'])); ?>">
+                                <?php echo esc_html($content['title']); ?>
                             </a>
                         </td>
-                        <td><?php echo number_format($content->views); ?></td>
-                        <td>$<?php echo number_format($content->revenue, 2); ?></td>
-                        <td><?php echo number_format($content->conversion_rate, 1); ?>%</td>
+                        <td><?php echo number_format($content['views']); ?></td>
+                        <td>$<?php echo number_format($content['revenue'], 2); ?></td>
+                        <td><?php echo number_format($content['conversion_rate'], 1); ?>%</td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -106,7 +111,7 @@ $revenue_data = $analytics->get_revenue_data($current_month);
 jQuery(document).ready(function($) {
     // Initialize revenue chart
     var ctx = document.getElementById('revenue-chart').getContext('2d');
-    var revenueData = <?php echo json_encode($revenue_data); ?>;
+    var revenueData = <?php echo json_encode($data['revenue_data']); ?>;
     
     new Chart(ctx, {
         type: 'line',
